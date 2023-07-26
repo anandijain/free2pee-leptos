@@ -1,9 +1,4 @@
-use js_sys;
-use js_sys::Function;
-use leptos::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use web_sys::{console, window, Geolocation, Navigator, Position, Window};
+
 use free2pee_leptos::fetch_example;
 use leptos::*;
 
@@ -21,16 +16,16 @@ pub fn main() {
 //     /// The change that should be applied each time the button is clicked.
 //     step: i32,
 // ) -> impl IntoView {
-//     let (value, set_value) = create_signal(cx, initial_value);
-//     let (lat, set_lat) = create_signal(cx, 0.0);
-//     let (lon, set_lon) = create_signal(cx, 0.0);
-//     let w = window().unwrap();
-//     let wstr = format!("{:?}", w);
+    // let (value, set_value) = create_signal(cx, initial_value);
+    // let (lat, set_lat) = create_signal(cx, 0.0);
+    // let (lon, set_lon) = create_signal(cx, 0.0);
+    // let w = window().unwrap();
+    // let wstr = format!("{:?}", w);
 
-//     let nav = w.navigator();
-//     let nstr = format!("{:?}", nav);
-//     let geo = nav.geolocation().unwrap();
-//     let geostr = format!("{:?}", geo);
+    // let nav = w.navigator();
+    // let nstr = format!("{:?}", nav);
+    // let geo = nav.geolocation().unwrap();
+    // let geostr = format!("{:?}", geo);
 //     // log!(count);
 //     log!("{:?}", nav);
 

@@ -1,8 +1,14 @@
 use leptos::{error::Result, *};
+use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
 use std::collections::HashMap;
-use serde_derive::{Serialize, Deserialize};
+use thiserror::Error;
+use js_sys;
+use js_sys::Function;
+use leptos::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{console, window, Geolocation, Navigator, Position, PositionOptions, PositionError, Window};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +26,6 @@ pub struct Osm3s {
     #[serde(rename = "timestamp_osm_base")]
     pub timestamp_osm_base: String,
 }
-
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,19 +45,55 @@ pub enum BathroomError {
 }
 
 async fn fetch_bathrooms(_: ()) -> Result<OverpassResponse> {
-    let lat = 42.3593101;
-    let lon = -71.105846;
+    // let lat = 42.3593101;
+    // let lon = -71.105846;
+    let window = window().expect("should have a window in this context");
+    let navigator = window.navigator();
 
-    // make the request
-    let res = reqwasm::http::Request::get(&format!(
-        "https://overpass-api.de/api/interpreter?data=[out:json];node[\"amenity\"=\"toilets\"](around:1000,{lat},{lon});out;",
-    ))
-    .send()
-    .await?
-    // convert it to JSON
-    .json::<OverpassResponse>()
-    .await?;
-    Ok(res)
+    let closure = Closure::wrap(Box::new(move |position: Position| async {
+        let latitude = position.coords().latitude();
+        let longitude = position.coords().longitude();
+        let res = reqwasm::http::Request::get(&format!(
+            "https://overpass-api.de/api/interpreter?data=[out:json];node[\"amenity\"=\"toilets\"](around:1000,{latitude},{longitude});out;",
+        ))
+        .send()
+        .await.unwrap()
+        .json::<OverpassResponse>()
+        .await.unwrap();
+    log!("{}", &format!("Latitude: {}, Longitude: {}", latitude, longitude));
+        return Ok(res);
+    }) as Box<dyn FnMut(_)>);
+
+    let error = Closure::wrap(Box::new(move |_error: PositionError| {
+        log!("Error occurred while fetching the position.");
+    }) as Box<dyn FnMut(_)>);
+
+    navigator.geolocation().unwrap().get_current_position(
+        closure.as_ref().unchecked_ref(),
+        // error.as_ref().unchecked_ref(),
+        // PositionOptions::new().enable_high_accuracy(true),
+    );
+
+    closure.forget();
+    error.forget();
+
+
+    Ok(())
+
+    // BathroomError::FetchBathroomsFailed.into()
+}
+
+#[component]
+fn SimpleExample(cx: Scope) -> impl IntoView {
+  let (name, set_name) = create_signal(cx, "The name is ThePrimeagen".to_string());
+
+  let on_change = move |ev| { // ev is inferred to be `web_sys::MouseEvent`
+    set_name(event_target_value(&ev));
+  };
+
+  view! { cx,
+    <input on:change=on_change type="text" value=name/>
+  }
 }
 
 pub fn fetch_example(cx: Scope) -> impl IntoView {
@@ -79,19 +120,24 @@ pub fn fetch_example(cx: Scope) -> impl IntoView {
     let bathrooms_view = move || {
         bathrooms.read(cx).map(|data| {
             data.map(|data| {
-                data.elements.iter().map(|e| {
-                    view! { cx, <h1>{e.id.to_string()}</h1> }
-                }).collect_view(cx)
-                // let els = &data.clone()["elements"];
-                // els.as_array()
-                //     .iter()
-                //     .map(|e| view! { cx, <h1> {e} </h1> })
-                //     .collect_view(cx)
-                // for el in els.as_array().unwrap() {
-                //     view! { cx, <div>{el["tags"]["name"].as_str().unwrap()}</div> };
-                // }
-                // view! { cx, <pre>{serde_json::to_string_pretty(&data).unwrap()}</pre> }
-                // view! { cx, <h1>{"hi"}</h1> }
+                let bathroom_elements = data.elements.iter().map(|element| {
+                    view! { cx,
+                        <tr>
+                            <td>
+                                <a href={format!("https://www.openstreetmap.org/node/{}", element.id)} target="_blank">OSM:{element.id}</a>
+                            </td>
+                            <td>
+                                <a href={format!("https://www.google.com/maps/dir/?api=1&destination={},{}", element.lat, element.lon)} target="_blank">"Directions"</a>
+                            </td>
+                        </tr>
+                    }
+                }).collect_view(cx);
+    
+                view! { cx,
+                    <table>
+                        {bathroom_elements}
+                    </table>
+                }
             })
         })
     };
@@ -109,5 +155,6 @@ pub fn fetch_example(cx: Scope) -> impl IntoView {
                 </Transition>
             </ErrorBoundary>
         </div>
+        {SimpleExample(cx)}
     }
 }
