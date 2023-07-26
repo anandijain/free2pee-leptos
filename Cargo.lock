@@ -396,6 +396,7 @@ dependencies = [
  "log",
  "reqwasm",
  "serde",
+ "serde_derive",
  "serde_json",
  "thiserror",
  "wasm-bindgen",
