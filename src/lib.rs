@@ -9,6 +9,16 @@ use leptos::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{console, window, Geolocation, Navigator, Position, PositionOptions, PositionError, Window};
+use futures::channel::oneshot;
+use std::sync::{Arc, Mutex};
+
+impl From<BathroomError> for wasm_bindgen::JsValue {
+    fn from(error: BathroomError) -> Self {
+        // Convert your error to a JsValue.
+        // This is a simple example, you might need to adjust it to fit your needs.
+        wasm_bindgen::JsValue::from_str(&format!("{:?}", error))
+    }
+}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,56 +54,51 @@ pub enum BathroomError {
     FetchBathroomsFailed,
 }
 
-async fn fetch_bathrooms(_: ()) -> Result<OverpassResponse> {
-    // let lat = 42.3593101;
-    // let lon = -71.105846;
-    let window = window().expect("should have a window in this context");
-    let navigator = window.navigator();
+pub async fn fetch_bathrooms(_: ()) -> Result<OverpassResponse> {
+    let (sender, receiver) = oneshot::channel::<Result<(f64, f64), BathroomError>>();
+    let sender = Arc::new(Mutex::new(Some(sender)));
 
-    let closure = Closure::wrap(Box::new(move |position: Position| async {
-        let latitude = position.coords().latitude();
-        let longitude = position.coords().longitude();
-        let res = reqwasm::http::Request::get(&format!(
-            "https://overpass-api.de/api/interpreter?data=[out:json];node[\"amenity\"=\"toilets\"](around:1000,{latitude},{longitude});out;",
-        ))
-        .send()
-        .await.unwrap()
-        .json::<OverpassResponse>()
-        .await.unwrap();
-    log!("{}", &format!("Latitude: {}, Longitude: {}", latitude, longitude));
-        return Ok(res);
-    }) as Box<dyn FnMut(_)>);
+    let sender_clone = Arc::clone(&sender);
+    let success_callback = Closure::wrap(Box::new(move |pos: Position| {
+        let lat = pos.coords().latitude();
+        let lon = pos.coords().longitude();
+        log!("lat: {}, lon: {}", lat, lon);
+        if let Some(sender) = sender_clone.lock().unwrap().take() {
+            let _ = sender.send(Ok((lat, lon)));
+        }
+    }) as Box<dyn FnMut(Position)>);
 
-    let error = Closure::wrap(Box::new(move |_error: PositionError| {
-        log!("Error occurred while fetching the position.");
-    }) as Box<dyn FnMut(_)>);
+    let sender_clone = Arc::clone(&sender);
+    let error_callback = Closure::wrap(Box::new(move |_err: PositionError| {
+        // Here you could translate the PositionError into a specific BathroomError
+        if let Some(sender) = sender_clone.lock().unwrap().take() {
+            let _ = sender.send(Err(BathroomError::FetchBathroomsFailed));
+        }
+    }) as Box<dyn FnMut(PositionError)>);
 
-    navigator.geolocation().unwrap().get_current_position(
-        closure.as_ref().unchecked_ref(),
-        // error.as_ref().unchecked_ref(),
-        // PositionOptions::new().enable_high_accuracy(true),
-    );
+    let navigator = window().unwrap().navigator();
+    let geolocation = navigator.geolocation().unwrap();
+    geolocation.get_current_position_with_error_callback(
+        success_callback.as_ref().unchecked_ref(),
+        Some(error_callback.as_ref().unchecked_ref()),
+    ).unwrap();
 
-    closure.forget();
-    error.forget();
+    success_callback.forget();
+    error_callback.forget();
 
+    let coords = receiver.await.unwrap()?; // Propagate the BathroomError if we got one
 
-    Ok(())
+    let (lat, lon) = coords;
 
-    // BathroomError::FetchBathroomsFailed.into()
-}
+    let res = reqwasm::http::Request::get(&format!(
+        "https://overpass-api.de/api/interpreter?data=[out:json];node[\"amenity\"=\"toilets\"](around:1000,{lat},{lon});out;",
+    ))
+    .send()
+    .await.unwrap()
+    .json::<OverpassResponse>()
+    .await.unwrap();
 
-#[component]
-fn SimpleExample(cx: Scope) -> impl IntoView {
-  let (name, set_name) = create_signal(cx, "The name is ThePrimeagen".to_string());
-
-  let on_change = move |ev| { // ev is inferred to be `web_sys::MouseEvent`
-    set_name(event_target_value(&ev));
-  };
-
-  view! { cx,
-    <input on:change=on_change type="text" value=name/>
-  }
+    Ok(res)
 }
 
 pub fn fetch_example(cx: Scope) -> impl IntoView {
@@ -155,6 +160,5 @@ pub fn fetch_example(cx: Scope) -> impl IntoView {
                 </Transition>
             </ErrorBoundary>
         </div>
-        {SimpleExample(cx)}
     }
 }
