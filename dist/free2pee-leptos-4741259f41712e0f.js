@@ -671,7 +671,7 @@ async function __wbg_init(input) {
     if (wasm !== undefined) return wasm;
 
     if (typeof input === 'undefined') {
-        input = new URL('free2pee-leptos-2b07afdbeda8a801_bg.wasm', import.meta.url);
+        input = new URL('free2pee-leptos-4741259f41712e0f_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

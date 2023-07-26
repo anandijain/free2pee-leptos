@@ -137,7 +137,6 @@ pub fn fetch_example(cx: Scope) -> impl IntoView {
 
     view! { cx,
         <div>
-            <h2>"Nearest Bathrooms"</h2>
             <ErrorBoundary fallback>
                 <Transition fallback=move || {
                     view! { cx, <div>"Loading (Suspense Fallback)..."</div> }
